@@ -183,7 +183,9 @@ class AvailableTest:
             import shlex
             args = shlex.split(f'"{self.v2ray_path}" "-config" "{config_path}"')
             p = subprocess.Popen(args)
+            pid = None
             try:
+                pid = p.pid
                 for i in range(self.times):
                     await asyncio.sleep(self.sleep_seconds)
                     try:
@@ -201,6 +203,8 @@ class AvailableTest:
             finally:
                 p.kill()
                 os.remove(config_path)
+                if pid is not None:
+                    os.system(f'kill -9 {pid}')
         if ping >= 9999999:
             ping = None
         if response_times < self.response_times:
