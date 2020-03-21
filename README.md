@@ -73,9 +73,9 @@ V2Ray 可以设置如下参数:
 import v2ray
 
 async def update_config(config, handler):
-    print('before outbounds change', config)
+    print('before config dict change', config)
     await handler
-    print('after outbounds change', config)
+    print('after config dict change', config)
 
 
 async def main():
@@ -85,6 +85,56 @@ async def main():
     # ...
     await v.run()
 ```
+
+
+routing
+-------
+
+```python
+import v2ray
+
+
+class ConfigBuilder(v2ray.ConfigBuilder):
+    async def build(self, config: dict, nodes: list):
+        outbounds = config['outbounds']
+        freedom = v2ray.Node(
+            'direct',
+            None,
+            None,
+            protocol='freedom',
+        )
+        outbounds.append(freedom.to_outbound())
+
+        outside_balancer = v2ray.Balancer('outside', [node.tag for node in nodes])
+        balancers = config['routing']['balancers']
+        balancers.append(outside_balancer.to_balancer())
+
+        rules: list = config['routing']['rules']
+        direct_rule = v2ray.Rule(
+            ip=[
+                "geoip:private",
+                "geoip:cn"
+            ],
+            outboundTag="direct",
+            type="field",
+        )
+        rules.append(direct_rule.to_rule())
+        outside_rule = v2ray.Rule(
+            balancerTag="outside",
+            network="tcp,udp",
+            type="field",
+        )
+        rules.append(outside_rule.to_rule())
+
+
+async def main():
+    config_builder = ConfigBuilder()
+    v = v2ray.V2Ray(..., config_object=config_builder)
+    # ...
+    # ...
+    await v.run()
+```
+
 
 测试节点
 -------
