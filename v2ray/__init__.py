@@ -275,7 +275,7 @@ class V2Ray:
             file.close()
         config_json = json.loads(data)
 
-        handler = await self.config_object.build(config_json, nodes=nodes)
+        handler = self.config_object.build(config_json, nodes=nodes)
         for middleware in self.middleware_list:
             handler = middleware(config_json, handler)
         await handler
