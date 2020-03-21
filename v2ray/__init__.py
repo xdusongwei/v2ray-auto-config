@@ -1,9 +1,9 @@
 import os
+import abc
 import enum
 import json
 import time
 import base64
-import signal
 import string
 import random
 import asyncio
@@ -16,6 +16,17 @@ import aiohttp
 class AirportLevel(enum.Enum):
     SOS = enum.auto()
     MEDIUM = enum.auto()
+
+
+class ConfigBuilder(abc.ABC):
+    async def build(self, config: dict, nodes: list):
+        raise NotImplementedError
+
+
+class OutboundConfigBuilder(ConfigBuilder):
+    async def build(self, config: dict, nodes: list):
+        outbounds = [node.to_outbound() for node in nodes]
+        config["outbounds"] = outbounds
 
 
 class Node:
@@ -221,6 +232,7 @@ class V2Ray:
                  period_seconds: int = 8 * 3600,
                  ping_latency_ms: int = None,
                  test_object = None,
+                 config_object = None,
                  ):
         assert config_path
         self.config_path = config_path
@@ -233,6 +245,7 @@ class V2Ray:
         self.restart_command = restart_command
         self.ping_latency_ms = ping_latency_ms
         self.test_object = test_object or SpeedTest()
+        self.config_object = config_object or OutboundConfigBuilder()
 
     def choose_node(self):
         nodes = list()
@@ -250,11 +263,7 @@ class V2Ray:
                 nodes.append(node)
         return nodes
 
-    async def _set_config(self, config, handler, servers=None):
-        outbounds = [server.to_outbound() for server in servers]
-        config["outbounds"] = outbounds
-
-    async def set_config(self, servers: list):
+    async def set_config(self, nodes: list):
         if self.template:
             if isinstance(self.template, dict):
                 data = json.dumps(self.template)
@@ -266,7 +275,7 @@ class V2Ray:
             file.close()
         config_json = json.loads(data)
 
-        handler = self._set_config(config_json, None, servers=servers)
+        handler = await self.config_object.build(config_json, nodes=nodes)
         for middleware in self.middleware_list:
             handler = middleware(config_json, handler)
         await handler
@@ -308,4 +317,39 @@ class V2Ray:
         return None
 
 
-__all__ = ['V2Ray', 'Airport', 'AirportLevel', 'Node', 'SpeedTest', 'AvailableTest', ]
+class Balancer:
+    def __init__(self, tag, selector):
+        self.tag = tag
+        self.selector = selector or list()
+
+    @property
+    def is_empty(self):
+        return not bool(self.selector)
+
+    def to_balancer(self):
+        return {
+            'tag': self.tag,
+            'selector': self.selector,
+        }
+
+
+class Rule:
+    def __init__(self, **kwargs):
+        self.args = kwargs.copy()
+
+    def to_rule(self):
+        return self.args.copy()
+
+
+__all__ = [
+    'V2Ray',
+    'Airport',
+    'AirportLevel',
+    'Node',
+    'SpeedTest',
+    'AvailableTest',
+    'Balancer',
+    'Rule',
+    'ConfigBuilder',
+    'OutboundConfigBuilder',
+]
