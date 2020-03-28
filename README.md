@@ -31,7 +31,7 @@ class FakeAirport(v2ray.Airport):
                 }
             ]
         }
-        node = v2ray.Node(tag=f'node@{self.airport_name}', host='127.0.0.1', port=12345, protocol='shadowsocks', settings=settings)
+        node = v2ray.Node(tag=f'node@{self.airport_name}', protocol='shadowsocks', settings=settings)
         return [node, ]
 
 async def main():
@@ -137,7 +137,7 @@ async def main():
 测试节点
 -------
 
-`SpeedTest` 提供了通过连接速度的节点测试
+`SpeedTest` 提供了通过连接速度的节点测试, 需要提前设置 Node 对象的 test_host 和 test_port
 
 `AvailableTest` 通过建立临时v2ray进程测试节点线路是否可用, 达到稳定要求
 
@@ -146,7 +146,7 @@ import v2ray
 
 
 async def main():
-    # 测试每个节点需要完成3次代理请求, 必须达到2次以上请求成功, 请求间隔2秒
+    # 测试每个节点需要完成3次代理请求, 必须2次以上请求成功, 请求间隔2秒
     test = v2ray.AvailableTest(v2ray_path='/path/to/v2ray', response_times=2, times=3, sleep_seconds=2)
     v = v2ray.V2Ray(..., test_object=test)
     # ...
