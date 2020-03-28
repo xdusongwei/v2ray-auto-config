@@ -30,10 +30,20 @@ class OutboundConfigBuilder(ConfigBuilder):
 
 
 class Node:
-    def __init__(self, tag, host, port, weight=5, protocol=None, settings=None, stream_settings=None, **kwargs):
+    def __init__(self, tag, test_host=None, test_port=None, weight=5, protocol=None, settings=None, stream_settings=None, **kwargs):
+        '''
+        :param tag:
+        :param test_host: 执行SpeedTest需要的host地址
+        :param test_port: 执行SpeedTest需要的port地址
+        :param weight: 设置权重，以影响节点最终的选择
+        :param protocol: v2ray outbound 协议参数
+        :param settings: v2ray settings 参数
+        :param stream_settings: v2ray stream_settings 参数
+        :param kwargs: 其他 v2ray outbound 参数
+        '''
         self.tag = tag
-        self.host = host
-        self.port = port
+        self.test_host = test_host
+        self.test_port = test_port
         self.weight = weight
         self.ping = None
         self.protocol = protocol
@@ -46,7 +56,7 @@ class Node:
         return self.ping is not None
 
     def __str__(self):
-        return f'<Node tag:{self.tag}, {self.host}:{self.port} weight:{self.weight} {self.ping or "--"}ms>'
+        return f'<Node tag:{self.tag} weight:{self.weight} {self.ping or "--"}ms>'
 
     def __repr__(self):
         return self.__str__()
@@ -109,7 +119,7 @@ class SpeedTest:
             sleep_time = 3 + i * 2
             try:
                 begin_time = time.time()
-                open_connection = asyncio.open_connection(node.host, node.port)
+                open_connection = asyncio.open_connection(node.test_host, node.test_port)
                 reader, writer = await asyncio.wait_for(open_connection, timeout=v.connect_timeout)
                 try:
                     await asyncio.sleep(sleep_time)

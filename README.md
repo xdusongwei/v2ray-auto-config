@@ -99,8 +99,6 @@ class ConfigBuilder(v2ray.ConfigBuilder):
         outbounds = config['outbounds']
         freedom = v2ray.Node(
             'direct',
-            None,
-            None,
             protocol='freedom',
         )
         outbounds.append(freedom.to_outbound())
