@@ -236,7 +236,7 @@ class AvailableTest:
 class V2Ray:
     def __init__(self,
                  config_path: str = '/etc/v2ray/config.json',
-                 config_template: str = None,
+                 config_template: dict = None,
                  restart_command: str = 'service v2ray restart',
                  connect_timeout: int = 4,
                  period_seconds: int = 8 * 3600,

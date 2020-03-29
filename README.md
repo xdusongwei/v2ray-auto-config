@@ -87,8 +87,8 @@ async def main():
 ```
 
 
-routing
--------
+构建完整配置
+----------
 
 ```python
 import v2ray
@@ -127,7 +127,15 @@ class ConfigBuilder(v2ray.ConfigBuilder):
 
 async def main():
     config_builder = ConfigBuilder()
-    v = v2ray.V2Ray(..., config_object=config_builder)
+    template = {
+        "inbounds": [{...}],
+        "outbounds": [],
+        "routing": {
+            "balancers": [],
+            "rules": [],
+        }
+    }
+    v = v2ray.V2Ray(config_template=template, config_object=config_builder)
     # ...
     # ...
     await v.run()
