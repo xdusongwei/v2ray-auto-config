@@ -229,8 +229,9 @@ class AvailableTest:
                         length = len(text or '')
                         response_times += 1
                         finish_time = time.time()
-                        logger.info(f'{node} times: {i+1} ping:{ping}ms response: {length} bytes')
-                        ping = min(int((finish_time - begin_time) * 1000), ping)
+                        current_ping = int((finish_time - begin_time) * 1000)
+                        logger.info(f'{node} times: {i+1} ping:{current_ping}ms response: {length} bytes')
+                        ping = min(current_ping, ping)
                     except Exception as e:
                         logger.error(f'{node} available test failed: {e}')
                         if self.times - i - 1 + response_times < self.response_times:
