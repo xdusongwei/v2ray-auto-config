@@ -210,6 +210,7 @@ class AvailableTest:
         config['outbounds'].append(node.to_outbound())
         config_path = f'{self.TEMP_CONFIG_PREFIX}_{port}.json'
         url = random.choice(self.url_list)
+        logger = logging.getLogger()
         async with port_lock:
             with open(config_path, "w") as f:
                 f.write(json.dumps(config, indent=2))
@@ -217,21 +218,21 @@ class AvailableTest:
 
             args = shlex.split(f'"{self.v2ray_path}" "-config" "{config_path}"')
             p = subprocess.Popen(args)
-            pid = None
             try:
-                pid = p.pid
                 for i in range(self.times):
                     await asyncio.sleep(self.sleep_seconds)
                     try:
                         begin_time = time.time()
                         async with aiohttp.ClientSession() as session:
                             async with session.get(url=url, timeout=5, proxy=f"http://127.0.0.1:{port}") as resp:
-                                await resp.text()
+                                text = await resp.text()
+                        length = len(text or '')
                         response_times += 1
                         finish_time = time.time()
+                        logger.info(f'{node} times: {i+1} ping:{ping}ms response: {length} bytes')
                         ping = min(int((finish_time - begin_time) * 1000), ping)
                     except Exception as e:
-                        logging.getLogger().error(f'{node} available test failed: {e}')
+                        logger.error(f'{node} available test failed: {e}')
                         if self.times - i - 1 + response_times < self.response_times:
                             break
             finally:
