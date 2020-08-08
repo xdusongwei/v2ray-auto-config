@@ -237,8 +237,7 @@ class AvailableTest:
             finally:
                 p.kill()
                 os.remove(config_path)
-                if pid is not None:
-                    os.system(f'kill -9 {pid}')
+                p.communicate()
         if ping >= 9999999:
             ping = None
         if response_times < self.response_times:
