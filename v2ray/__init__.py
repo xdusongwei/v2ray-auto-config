@@ -179,9 +179,7 @@ class AvailableTest:
                 port = random.choice(list(port_lock.keys()))
                 task = asyncio.create_task(self.try_connect(node, port, port_lock[port]))
                 task_list.append(task)
-        self.kill_process()
         await asyncio.wait(task_list)
-        self.kill_process()
         node_list.sort(key=lambda x: (not x[1].is_connected, -x[1].weight, x[1].ping, x[0].airport_name))
         for airport, node in node_list:
             if node.is_connected:
@@ -192,14 +190,6 @@ class AvailableTest:
         v.available_airport = defaultdict(set)
         for airport, node in node_list:
             v.available_airport[airport].add(node)
-
-    def kill_process(self):
-        pid_list = list()
-        for line in os.popen(f'ps -ef | grep {self.v2ray_path} | grep {self.TEMP_CONFIG_PREFIX}'):
-            fields = [field for field in line.rstrip('\n').split(' ') if field]
-            pid_list.append(fields[1])
-        if pid_list:
-            os.popen(f'kill {" ".join(pid_list)}')
 
     async def try_connect(self, node: Node, port: int, port_lock: asyncio.Lock):
         node.ping = None
