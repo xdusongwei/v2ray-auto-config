@@ -99,7 +99,7 @@ class SpeedTest:
             servers = await airport.pull_node_list()
             for server in servers:
                 node_list.append((airport, server))
-                task = asyncio.create_task(self.try_connect(server))
+                task = asyncio.create_task(self.try_connect(server, v.connect_timeout))
                 task_list.append(task)
         await asyncio.wait(task_list)
         node_list.sort(key=lambda x: (not x[1].is_connected, -x[1].weight, x[1].ping, x[0].airport_name))
@@ -113,7 +113,7 @@ class SpeedTest:
         for airport, node in node_list:
             v.available_airport[airport].add(node)
 
-    async def try_connect(self, node: Node, retry_times: int = 3):
+    async def try_connect(self, node: Node, connect_timeout, retry_times: int = 3):
         node.ping = None
         ping = 9999999
         for i in range(retry_times):
@@ -121,7 +121,7 @@ class SpeedTest:
             try:
                 begin_time = time.time()
                 open_connection = asyncio.open_connection(node.test_host, node.test_port)
-                reader, writer = await asyncio.wait_for(open_connection, timeout=v.connect_timeout)
+                reader, writer = await asyncio.wait_for(open_connection, timeout=connect_timeout)
                 try:
                     await asyncio.sleep(sleep_time)
                     assert not writer.is_closing()
@@ -191,45 +191,77 @@ class AvailableTest:
         for airport, node in node_list:
             v.available_airport[airport].add(node)
 
-    async def try_connect(self, node: Node, port: int, port_lock: asyncio.Lock):
-        node.ping = None
+    async def _popen_connect(self, node: Node, port: int):
+        logger = logging.getLogger()
         ping = 9999999
         response_times = 0
+        url = random.choice(self.url_list)
         config = json.loads(json.dumps(self.CONFIG_TEMPLATE))
         config['inbounds'][0]['port'] = port
         config['outbounds'].append(node.to_outbound())
         config_path = f'{self.TEMP_CONFIG_PREFIX}_{port}.json'
-        url = random.choice(self.url_list)
-        logger = logging.getLogger()
-        async with port_lock:
-            with open(config_path, "w") as f:
-                f.write(json.dumps(config, indent=2))
-            assert os.path.exists(config_path)
+        args = shlex.split(f'"{self.v2ray_path}" "-config" "{config_path}"')
+        p = subprocess.Popen(args)
+        pid = p.pid
+        try:
+            for i in range(self.times):
+                await asyncio.sleep(self.sleep_seconds)
+                try:
+                    begin_time = time.time()
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(url=url, timeout=5, proxy=f"http://127.0.0.1:{port}") as resp:
+                            text = await resp.text()
+                    length = len(text or '')
+                    response_times += 1
+                    finish_time = time.time()
+                    current_ping = int((finish_time - begin_time) * 1000)
+                    logger.info(f'{node} times: {i + 1} ping:{current_ping}ms response: {length} bytes')
+                    ping = min(current_ping, ping)
+                except Exception as e:
+                    logger.error(f'{node} available test failed: {e}')
+                    if self.times - i - 1 + response_times < self.response_times:
+                        break
+        finally:
+            p.kill()
+            os.popen(f'kill {pid}')
+            os.remove(config_path)
+            p.communicate()
+        return ping, response_times
 
-            args = shlex.split(f'"{self.v2ray_path}" "-config" "{config_path}"')
-            p = subprocess.Popen(args)
+
+    async def _http_connect(self, node: Node):
+        logger = logging.getLogger()
+        ping = 9999999
+        response_times = 0
+        url = random.choice(self.url_list)
+        host = node.settings['servers'][0]['address']
+        port = node.settings['servers'][0]['port']
+        for i in range(self.times):
+            await asyncio.sleep(self.sleep_seconds)
             try:
-                for i in range(self.times):
-                    await asyncio.sleep(self.sleep_seconds)
-                    try:
-                        begin_time = time.time()
-                        async with aiohttp.ClientSession() as session:
-                            async with session.get(url=url, timeout=5, proxy=f"http://127.0.0.1:{port}") as resp:
-                                text = await resp.text()
-                        length = len(text or '')
-                        response_times += 1
-                        finish_time = time.time()
-                        current_ping = int((finish_time - begin_time) * 1000)
-                        logger.info(f'{node} times: {i+1} ping:{current_ping}ms response: {length} bytes')
-                        ping = min(current_ping, ping)
-                    except Exception as e:
-                        logger.error(f'{node} available test failed: {e}')
-                        if self.times - i - 1 + response_times < self.response_times:
-                            break
-            finally:
-                p.kill()
-                os.remove(config_path)
-                p.communicate()
+                begin_time = time.time()
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url=url, timeout=5, proxy=f"http://{host}:{port}") as resp:
+                        text = await resp.text()
+                length = len(text or '')
+                response_times += 1
+                finish_time = time.time()
+                current_ping = int((finish_time - begin_time) * 1000)
+                logger.info(f'{node} times: {i + 1} ping:{current_ping}ms response: {length} bytes')
+                ping = min(current_ping, ping)
+            except Exception as e:
+                logger.error(f'{node} available test failed: {e}')
+                if self.times - i - 1 + response_times < self.response_times:
+                    break
+        return ping, response_times
+
+    async def try_connect(self, node: Node, port: int, port_lock: asyncio.Lock):
+        node.ping = None
+        async with port_lock:
+            if node.protocol == 'http':
+                ping, response_times = await self._http_connect(node)
+            else:
+                ping, response_times = await self._popen_connect(node, port)
         if ping >= 9999999:
             ping = None
         if response_times < self.response_times:
