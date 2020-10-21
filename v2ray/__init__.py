@@ -12,6 +12,7 @@ import logging
 import subprocess
 from collections import defaultdict
 import aiohttp
+from aiohttp_socks import ProxyType, ProxyConnector, ChainProxyConnector
 
 
 class AirportLevel(enum.Enum):
@@ -255,12 +256,41 @@ class AvailableTest:
                     break
         return ping, response_times
 
+    async def _socks_connect(self, node: Node):
+        logger = logging.getLogger()
+        ping = 9999999
+        response_times = 0
+        url = random.choice(self.url_list)
+        host = node.settings['servers'][0]['address']
+        port = node.settings['servers'][0]['port']
+        for i in range(self.times):
+            await asyncio.sleep(self.sleep_seconds)
+            try:
+                begin_time = time.time()
+                connector = ProxyConnector.from_url(f'socks5://{host}:{port}')
+                async with aiohttp.ClientSession(connector=connector) as session:
+                    async with session.get(url=url, timeout=5) as resp:
+                        text = await resp.text()
+                length = len(text or '')
+                response_times += 1
+                finish_time = time.time()
+                current_ping = int((finish_time - begin_time) * 1000)
+                logger.info(f'{node} times: {i + 1} ping:{current_ping}ms response: {length} bytes')
+                ping = min(current_ping, ping)
+            except Exception as e:
+                logger.error(f'{node} available test failed: {e}')
+                if self.times - i - 1 + response_times < self.response_times:
+                    break
+        return ping, response_times
+
     async def try_connect(self, node: Node, port: int, port_lock: asyncio.Lock):
         node.ping = None
-        async with port_lock:
-            if node.protocol == 'http':
-                ping, response_times = await self._http_connect(node)
-            else:
+        if node.protocol == 'http':
+            ping, response_times = await self._http_connect(node)
+        elif node.protocol == 'socks':
+            ping, response_times = await self._socks_connect(node)
+        else:
+            async with port_lock:
                 ping, response_times = await self._popen_connect(node, port)
         if ping >= 9999999:
             ping = None

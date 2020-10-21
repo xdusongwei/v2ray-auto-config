@@ -10,6 +10,6 @@ setup(
     long_description='',
     zip_safe=False,
     packages=find_packages(),
-    install_requires=['aiohttp[speedups]', ],
+    install_requires=['aiohttp[speedups]', 'aiohttp_socks', ],
     python_requires='>=3.7.0',
 )
