@@ -295,7 +295,7 @@ class AvailableTest:
                 response_times += 1
                 finish_time = time.time()
                 current_ping = int((finish_time - begin_time) * 1000)
-                logger.info(f'{node} times: {i + 1} score:{current_ping}ms response: {length} bytes')
+                logger.info(f'{node} times: {i + 1} score:{current_ping}{self.unit} response: {length} bytes')
                 score = self._score(current_ping, length, score)
             except Exception as e:
                 logger.error(f'{node} available test failed: {e}')
