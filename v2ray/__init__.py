@@ -47,7 +47,8 @@ class Node:
         self.test_host = test_host
         self.test_port = test_port
         self.weight = weight
-        self.ping = None
+        self.score = None
+        self.score_unit = 'ms'
         self.protocol = protocol
         self.settings = settings or dict()
         self.stream_settings = stream_settings
@@ -55,10 +56,10 @@ class Node:
 
     @property
     def is_connected(self):
-        return self.ping is not None
+        return self.score is not None
 
     def __str__(self):
-        return f'<Node tag:{self.tag} weight:{self.weight} {self.ping or "--"}ms>'
+        return f'<Node tag:{self.tag} weight:{self.weight} {self.score or "--"}{self.score_unit}>'
 
     def __repr__(self):
         return self.__str__()
@@ -93,6 +94,9 @@ class Airport:
 
 
 class SpeedTest:
+    def __init__(self):
+        self.unit = 'ms'
+
     async def connection_test(self, v):
         task_list = list()
         node_list = list()
@@ -103,7 +107,7 @@ class SpeedTest:
                 task = asyncio.create_task(self.try_connect(server, v.connect_timeout))
                 task_list.append(task)
         await asyncio.wait(task_list)
-        node_list.sort(key=lambda x: (not x[1].is_connected, -x[1].weight, x[1].ping, x[0].airport_name))
+        node_list.sort(key=lambda x: (not x[1].is_connected, -x[1].weight, x[1].score, x[0].airport_name))
         for airport, node in node_list:
             if node.is_connected:
                 logging.info(f'{node} alive')
@@ -115,7 +119,7 @@ class SpeedTest:
             v.available_airport[airport].add(node)
 
     async def try_connect(self, node: Node, connect_timeout, retry_times: int = 3):
-        node.ping = None
+        node.score = None
         ping = 9999999
         for i in range(retry_times):
             sleep_time = 3 + i * 2
@@ -140,7 +144,7 @@ class SpeedTest:
                 pass
         if ping >= 9999999:
             ping = None
-        node.ping = ping
+        node.score = ping
 
 
 class AvailableTest:
@@ -161,13 +165,14 @@ class AvailableTest:
     }
 
     def __init__(self, http_proxy_port=range(4000, 4008), times=3, response_times=3, sleep_seconds=5,
-                 v2ray_path='/usr/bin/v2ray/v2ray', url_list=None):
+                 v2ray_path='/usr/bin/v2ray/v2ray', url_list=None, unit='ms'):
         self.http_proxy_port = http_proxy_port
         self.times = times
         self.response_times = response_times
         self.sleep_seconds =sleep_seconds
         self.url_list = url_list or ['https://google.com/', 'https://youtube.com/', 'https://github.com/', ]
         self.v2ray_path = v2ray_path
+        self.unit = unit
 
     async def connection_test(self, v):
         task_list = list()
@@ -181,7 +186,7 @@ class AvailableTest:
                 task = asyncio.create_task(self.try_connect(node, port, port_lock[port]))
                 task_list.append(task)
         await asyncio.wait(task_list)
-        node_list.sort(key=lambda x: (not x[1].is_connected, -x[1].weight, x[1].ping, x[0].airport_name))
+        node_list.sort(key=lambda x: (not x[1].is_connected, -x[1].weight, x[1].score, x[0].airport_name))
         for airport, node in node_list:
             if node.is_connected:
                 logging.info(f'{node} stable')
@@ -192,9 +197,25 @@ class AvailableTest:
         for airport, node in node_list:
             v.available_airport[airport].add(node)
 
+    def _init_score(self):
+        if self.unit == 'ms':
+            return 9999999
+        if self.unit == 'Bps':
+            return 0
+        return 9999999
+
+    def _score(self, ms: int, length: int, best: int):
+        if self.unit == 'ms':
+            return min(best, ms)
+        if self.unit == 'Bps':
+            ms = float(ms or 1000)
+            speed = int(length / ms * 1000)
+            return max(speed, best)
+        return best
+
     async def _popen_connect(self, node: Node, port: int):
         logger = logging.getLogger()
-        ping = 9999999
+        score = self._init_score()
         response_times = 0
         url = random.choice(self.url_list)
         config = json.loads(json.dumps(self.CONFIG_TEMPLATE))
@@ -216,8 +237,8 @@ class AvailableTest:
                     response_times += 1
                     finish_time = time.time()
                     current_ping = int((finish_time - begin_time) * 1000)
-                    logger.info(f'{node} times: {i + 1} ping:{current_ping}ms response: {length} bytes')
-                    ping = min(current_ping, ping)
+                    logger.info(f'{node} times: {i + 1} score:{current_ping}ms response: {length} bytes')
+                    score = self._score(current_ping, length, score)
                 except Exception as e:
                     logger.error(f'{node} available test failed: {e}')
                     if self.times - i - 1 + response_times < self.response_times:
@@ -227,12 +248,11 @@ class AvailableTest:
             os.popen(f'kill {pid}')
             os.remove(config_path)
             p.communicate()
-        return ping, response_times
-
+        return score, response_times
 
     async def _http_connect(self, node: Node):
         logger = logging.getLogger()
-        ping = 9999999
+        score = self._init_score()
         response_times = 0
         url = random.choice(self.url_list)
         host = node.settings['servers'][0]['address']
@@ -248,17 +268,17 @@ class AvailableTest:
                 response_times += 1
                 finish_time = time.time()
                 current_ping = int((finish_time - begin_time) * 1000)
-                logger.info(f'{node} times: {i + 1} ping:{current_ping}ms response: {length} bytes')
-                ping = min(current_ping, ping)
+                logger.info(f'{node} times: {i + 1} score:{current_ping}ms response: {length} bytes')
+                score = self._score(current_ping, length, score)
             except Exception as e:
                 logger.error(f'{node} available test failed: {e}')
                 if self.times - i - 1 + response_times < self.response_times:
                     break
-        return ping, response_times
+        return score, response_times
 
     async def _socks_connect(self, node: Node):
         logger = logging.getLogger()
-        ping = 9999999
+        score = self._init_score()
         response_times = 0
         url = random.choice(self.url_list)
         host = node.settings['servers'][0]['address']
@@ -275,16 +295,16 @@ class AvailableTest:
                 response_times += 1
                 finish_time = time.time()
                 current_ping = int((finish_time - begin_time) * 1000)
-                logger.info(f'{node} times: {i + 1} ping:{current_ping}ms response: {length} bytes')
-                ping = min(current_ping, ping)
+                logger.info(f'{node} times: {i + 1} score:{current_ping}ms response: {length} bytes')
+                score = self._score(current_ping, length, score)
             except Exception as e:
                 logger.error(f'{node} available test failed: {e}')
                 if self.times - i - 1 + response_times < self.response_times:
                     break
-        return ping, response_times
+        return score, response_times
 
     async def try_connect(self, node: Node, port: int, port_lock: asyncio.Lock):
-        node.ping = None
+        node.score = None
         if node.protocol == 'http':
             ping, response_times = await self._http_connect(node)
         elif node.protocol == 'socks':
@@ -296,7 +316,8 @@ class AvailableTest:
             ping = None
         if response_times < self.response_times:
             ping = None
-        node.ping = ping
+        node.score = ping
+        node.score_unit = self.unit
 
 
 class V2Ray:
@@ -306,7 +327,7 @@ class V2Ray:
                  restart_command: str = 'service v2ray restart',
                  connect_timeout: int = 4,
                  period_seconds: int = 8 * 3600,
-                 ping_latency_ms: int = None,
+                 score_limit: int = None,
                  test_object = None,
                  config_object = None,
                  ):
@@ -319,7 +340,7 @@ class V2Ray:
         self.period_seconds = period_seconds
         self.template = config_template
         self.restart_command = restart_command
-        self.ping_latency_ms = ping_latency_ms
+        self.score_limit = score_limit
         self.test_object = test_object or SpeedTest()
         self.config_object = config_object or OutboundConfigBuilder()
 
@@ -331,11 +352,18 @@ class V2Ray:
             available_airport = {airport: node_set for airport, node_set in self.available_airport.items()
                                  if airport.level != AirportLevel.SOS}
         for airport, node_set in available_airport.items():
-            node_list = sorted(node_set, key=lambda x: x.ping)
+            if self.test_object.unit == 'Bps':
+                node_list = sorted(node_set, key=lambda x: x.score, reverse=True)
+            else:
+                node_list = sorted(node_set, key=lambda x: x.score)
             node_list = node_list[:airport.max_devices]
             for node in node_list:
-                if self.ping_latency_ms and node.ping > self.ping_latency_ms:
-                    continue
+                if self.test_object.unit == 'Bps':
+                    if self.score_limit and node.score < self.score_limit:
+                        continue
+                else:
+                    if self.score_limit and node.score > self.score_limit:
+                        continue
                 nodes.append(node)
         return nodes
 
