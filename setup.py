@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='v2ray-auto-config',
-    version='0.2.12',
+    version='0.2.13',
     author='songwei',
     author_email='songwei@songwei.io',
     url='https://github.com/xdusongwei/v2ray-auto-config',

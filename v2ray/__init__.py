@@ -232,8 +232,8 @@ class AvailableTest:
                     begin_time = time.time()
                     async with aiohttp.ClientSession() as session:
                         async with session.get(url=url, timeout=5, proxy=f"http://127.0.0.1:{port}") as resp:
-                            text = await resp.text()
-                    length = len(text or '')
+                            body = await resp.read()
+                    length = len(body or '')
                     response_times += 1
                     finish_time = time.time()
                     current_ping = int((finish_time - begin_time) * 1000)
@@ -263,8 +263,8 @@ class AvailableTest:
                 begin_time = time.time()
                 async with aiohttp.ClientSession() as session:
                     async with session.get(url=url, timeout=5, proxy=f"http://{host}:{port}") as resp:
-                        text = await resp.text()
-                length = len(text or '')
+                        body = await resp.read()
+                length = len(body or '')
                 response_times += 1
                 finish_time = time.time()
                 current_ping = int((finish_time - begin_time) * 1000)
@@ -290,8 +290,8 @@ class AvailableTest:
                 connector = ProxyConnector.from_url(f'socks5://{host}:{port}')
                 async with aiohttp.ClientSession(connector=connector) as session:
                     async with session.get(url=url, timeout=5) as resp:
-                        text = await resp.text()
-                length = len(text or '')
+                        body = await resp.read()
+                length = len(body or '')
                 response_times += 1
                 finish_time = time.time()
                 current_ping = int((finish_time - begin_time) * 1000)
